@@ -17,6 +17,7 @@
 #include <stdlib.h>
 
 #pragma region DBJ added
+
 /********************************************************************************************/
 /********************************************************************************************/
 
@@ -25,29 +26,58 @@
 #endif
 
 #define DBJ_APP_NAME L"dbj_time"
+#define DBJ_VER_STRING L"1.5.0"
+typedef enum { major = 1, minor = 5, patch = 0 } version ;
 
-typedef enum { major = 1, minor = 0, patch = 0 } version ;
+#pragma comment( user, "dbj_time [1.5.0] compiled by dbj@dbj.org on " __DATE__ " at " __TIME__ )
 
-#define DBJ_VER_STRING L"1.0.0"
+#include "vt100.h"
 
 static void last_error_message () // unicode
 {
 	wchar_t err[256] = {0};
 	FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
 		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), err, 255, NULL);
-	wprintf(L"\n%s\n", err);
-	// _putws(err);
+	// wprintf(L"\n%s\n", err);
+	_putws(err);
 }
+/********************************************************************************************/
+/*
+For some reason MSVC's behaviour is to warn about
+including this system header. 
+*/
+#pragma warning(disable : 4820)
+#pragma warning(push, 1)
+#include <io.h>
+#pragma warning(pop)
+
+// we need to do runtime since stdout might be redirected or non existent
+static void assure_colours(void)
+{
+     if (! (_isatty(_fileno(stdout))) && (_WIN32_WINNT >= _WIN32_WINNT_WIN10))
+	 {
+		 _putws(L"stdout appears to be redirected to a file? Exiting");
+		 exit(EXIT_FAILURE);
+	 }
+	// ugly! but works
+	// vt100 init for win10 cmd.exe
+	system(" ");
+}
+
 /********************************************************************************************/
 /********************************************************************************************/
 #pragma endregion DBJ added
 
 /* Displays usage help for this program. */
-static void usage()
+static void intro(void)
 {
-	wprintf(L"\n\nUsage: " DBJ_APP_NAME L" command [args...]");
-	wprintf(L"\n\nVersion: " DBJ_VER_STRING );
-	wprintf(L"\n\nBuild: %S \n\n", __TIMESTAMP__ );
+	wprintf( VT100_FG_BLUE_BOLD L"%s [%s] ", DBJ_APP_NAME, DBJ_VER_STRING );
+	wprintf(L"[%S]\n" VT100_RESET , __DATE__ );
+}
+
+static void usage(void)
+{
+	wprintf(L"Usage: " DBJ_APP_NAME L" executable [args...]\n\n");
 }
 
 /* Converts FILETIME to ULONGLONG. */
@@ -87,15 +117,15 @@ static int display_process_info(HANDLE hProcess)
 	/* Display display_process_info. */
 	wprintf(L"Exit code      : %u\n", dwExitCode);
 
-	wprintf(L"Elapsed time   : %.2lf\n", tElapsed);
+	wprintf( VT100_FG_GREEN_BOLD L"Elapsed time   : %.2lf\n" VT100_RESET , tElapsed);
 	wprintf(L"Kernel time    : %.2lf (%.1lf%%)\n", tKernel, 100.0*tKernel/tElapsed);
 	wprintf(L"User time      : %.2lf (%.1lf%%)\n", tUser, 100.0*tUser/tElapsed);
 
 	wprintf(L"page fault #   : %u\n", pmc.PageFaultCount);
-	wprintf(L"Working set    : %u KB\n", pmc.PeakWorkingSetSize/1024);
-	wprintf(L"Paged pool     : %u KB\n", pmc.QuotaPeakPagedPoolUsage/1024);
-	wprintf(L"Non-paged pool : %u KB\n", pmc.QuotaPeakNonPagedPoolUsage/1024);
-	wprintf(L"Page file size : %u KB\n", pmc.PeakPagefileUsage/1024);
+	wprintf(L"Working set    : %llu KB\n", pmc.PeakWorkingSetSize/1024);
+	wprintf(L"Paged pool     : %llu KB\n", pmc.QuotaPeakPagedPoolUsage/1024);
+	wprintf(L"Non-paged pool : %llu KB\n", pmc.QuotaPeakNonPagedPoolUsage/1024);
+	wprintf(L"Page file size : %llu KB\n", pmc.PeakPagefileUsage/1024);
 
 	return 0;
 }
@@ -112,6 +142,9 @@ int wmain(
 #endif
 	)
 {
+	assure_colours() ;
+	intro();
+
 	LPWSTR szCmdLine;
 	LPWSTR szBegin;
 	STARTUPINFO si = { sizeof(STARTUPINFO) };
@@ -161,16 +194,16 @@ int wmain(
 	{
 		int i;
 		for (i = 0; i < argc; i++)
-			wprintf(L"argv[%d]=%s\n", i, argv[i]);
-		wprintf(L"CmdLine=%s\n", szCmdLine);
-		wprintf(L"Invoked=%s\n", szBegin);
+			wprintf(VT100_FG_GREEN_BOLD L"argv[%d]='%s'\n" VT100_RESET, i, argv[i]);
+		wprintf(L"CmdLine = '%s'\n", szCmdLine);
+		wprintf(L"Invoked = '%s'\n", szBegin);
 	}
 #endif
 
 	/* Create the process. */
-	if (!CreateProcess(NULL, szBegin, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+	if (!CreateProcessW(NULL, szBegin, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
 	{
-		wprintf(L"Error: Cannot create process.\n");
+		wprintf(VT100_FG_RED_BOLD L"Error: Cannot create process.\n" VT100_RESET);
 		last_error_message();
 		return EXIT_FAILURE;
 	}
@@ -178,7 +211,7 @@ int wmain(
 	/* Wait for the process to finish. */
 	if (WaitForSingleObject(pi.hProcess, INFINITE) != WAIT_OBJECT_0)
 	{
-		wprintf(L"Error: Cannot wait for process.\n");
+		wprintf(VT100_FG_RED_BOLD L"Error: Cannot wait for a process.\n" VT100_RESET);
 		last_error_message();
 		return EXIT_FAILURE;
 	}
